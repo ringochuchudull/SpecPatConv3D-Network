@@ -10,6 +10,7 @@ parser.add_argument('--patch_size', type=int, default=5, help='Feature size, odd
 parser.add_argument('--train_ratio', type=float, default=0.1, help='Fraction for training from data')
 parser.add_argument('--validation_ratio', type=float, default=0.1, help='Fraction for validation from data')
 parser.add_argument('--dtype', type=str, default='float16', help='Data type (Eg float64, float32, float16, int64...')
+parser.add_argument('--channel_first', type=bool, default=False, help='Set TRUE to have channel first/ otherwise channel last')
 parser.add_argument('--plot', type=bool, default=False, help='Set TRUE for visualizing the statlie images and ground truth')
 opt = parser.parse_args()
 
@@ -161,6 +162,8 @@ processed_data = {}
 train_idx = list(range(len(TRAIN_PATCH)))
 shuffle(train_idx)
 TRAIN_PATCH = TRAIN_PATCH[train_idx]
+if opt.channel_first:
+    TRAIN_PATCH = np.transpose(TRAIN_PATCH, (0,3,1,2))
 TRAIN_LABELS = TRAIN_LABELS[train_idx]
 TRAIN_LABELS = OnehotTransform(TRAIN_LABELS)
 processed_data["train_patch"] = TRAIN_PATCH
@@ -169,6 +172,8 @@ processed_data["train_labels"] = TRAIN_LABELS
 test_idx = list(range(len(TEST_PATCH)))
 shuffle(test_idx)
 TEST_PATCH = TEST_PATCH[test_idx]
+if opt.channel_first:
+    TEST_PATCH = np.transpose(TEST_PATCH, (0,3,1,2))
 TEST_LABELS = TEST_LABELS[test_idx]
 TEST_LABELS = OnehotTransform(TEST_LABELS)
 processed_data["test_patch"] = TEST_PATCH
@@ -177,6 +182,8 @@ processed_data["test_labels"] = TEST_LABELS
 val_idx = list(range(len(VAL_PATCH)))
 shuffle(val_idx)
 VAL_PATCH = VAL_PATCH[val_idx]
+if opt.channel_first:
+    VAL_PATCH = np.transpose(VAL_PATCH, (0,3,1,2))
 VAL_LABELS = VAL_LABELS[val_idx]
 VAL_LABELS = OnehotTransform(VAL_LABELS)
 processed_data["val_patch"] = VAL_PATCH

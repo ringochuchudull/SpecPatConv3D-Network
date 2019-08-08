@@ -8,6 +8,13 @@ import os
 
 from tqdm import tqdm
 
+import torch
+import torch.nn as nn
+import torchvision
+import torchvision.transforms as transforms
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
+
 number_of_band = {'Indian_pines': 2, 'Salinas': 2, 'KSC': 2, 'Botswana': 1}
 
 # get_available_gpus()
@@ -21,156 +28,134 @@ parser.add_argument('--data', type=str, default='Indian_pines', help='Indian_pin
 parser.add_argument('--epoch', type=int, default=650, help='Epochs')
 parser.add_argument('--batch_size', type=int, default=50, help='Mini batch at training')
 parser.add_argument('--patch_size', type=int, default=5)
-parser.add_argument('--device', type=str, default='CPU')
+parser.add_argument('--device', type=str, default='cpu')
 
-def main(opt):
+parser = parser.parse_args()
+device = torch.device(parser.device if torch.cuda.is_available() else parser.device)
 
-    # Load MATLAB data that contains data and labels
-    TRAIN, VALIDATION, TEST = maybeExtract(opt.data, opt.patch_size)
+TRAIN, VALIDATION, TEST = maybeExtract(parser.data, parser.patch_size)
+# Extract data and label from MATLAB file
 
-    # Extract data and label from MATLAB file
-    training_data, training_label = TRAIN[0], TRAIN[1]
-    validation_data, validation_label = VALIDATION[0], VALIDATION[1]
-    test_data, test_label = TEST[0], TEST[1]
 
-    print('\nData shapes')
-    print('training_data shape' + str(training_data.shape))
-    print('training_label shape' + str(training_label.shape) + '\n')
-    print('validation_data shape' + str(validation_data.shape))
-    print('validation_label shape' + str(validation_label.shape) + '\n')
-    print('test_data shape' + str(test_data.shape))
-    print('test_label shape' + str(test_label.shape) + '\n')
+training_data, training_label = torch.from_numpy(TRAIN[0]), torch.from_numpy(TRAIN[1])
+validation_data, validation_label = torch.from_numpy(VALIDATION[0]), torch.from_numpy(VALIDATION[1])
+test_data, test_label = torch.from_numpy(TEST[0]), torch.from_numpy(TEST[1])
 
-    SIZE = training_data.shape[0]
-    HEIGHT = training_data.shape[1]
-    WIDTH = training_data.shape[2]
-    CHANNELS = training_data.shape[3]
-    N_PARALLEL_BAND = number_of_band[opt.data]
-    NUM_CLASS = training_label.shape[1]
+test_label =torch.squeeze(test_label)
 
-    EPOCHS = opt.epoch
-    BATCH = opt.batch_size
 
-    graph = tf.Graph()
-    with graph.as_default():
-        # Define Model entry placeholder
-        img_entry = tf.placeholder(tf.float32, shape=[None, WIDTH, HEIGHT, CHANNELS])
-        img_label = tf.placeholder(tf.uint8, shape=[None, NUM_CLASS])
+print('training_data shape: ' + str(training_data.shape))
+print('training_label shape: ' + str(training_label.shape) + '\n')
+print('validation_data shape: ' + str(validation_data.shape))
+print('validation_label shape: ' + str(validation_label.shape) + '\n')
+print('test_data shape: ' + str(test_data.shape))
+print('test_label shape:' + str(test_label.shape) + '\n')
 
-        # Get true class from one-hot encoded format
-        image_true_class = tf.argmax(img_label, axis=1)
+c = torch.max(training_label)+1
+c = c.numpy()
 
-        # Dropout probability for the model
-        prob = tf.placeholder(tf.float32)
+EPOCH = 50
+CLASS = 11
+BATCH_SIZE = 50
+LR = 0.0005
 
-        # Network model definition
-        model = net(img_entry, prob, HEIGHT, WIDTH, CHANNELS, N_PARALLEL_BAND, NUM_CLASS)
+TRAIN_SIZE = len(training_data)
 
-        # Cost Function
-        final_layer = model['dense3']
+class SpecPatConv(nn.Module):
+    def __init__(self, CLASS):
+        super(SpecPatConv, self).__init__()
+        self.conv2d_1 = nn.Conv2d(200,200,1) #in_channel/out_channel/fiter_size
+        self.fc1 = nn.Linear(200*5*5, 120)
+        self.fc2 = nn.Linear(120,11)
 
-        with tf.name_scope('loss'):
-            cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(logits=final_layer,
-                                                                       labels=img_label)
-            cost = tf.reduce_mean(cross_entropy)
+    def forward(self, x):
+        x = F.relu(self.conv2d_1(x))
+        x = x.view(-1, 200*5*5)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        return x
 
-        # Optimisation function
-        with tf.name_scope('adam_optimizer'):
-            optimizer = tf.train.AdamOptimizer(learning_rate=0.0005).minimize(cost)
+model = SpecPatConv(CLASS).to(device)
+model = model
+print(model)
 
-        # Model Performance Measure
-        with tf.name_scope('accuracy'):
-            predict_class = model['predict_class_number']
-            correction = tf.equal(predict_class, image_true_class)
+# Loss and optimizer
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
-        accuracy = tf.reduce_mean(tf.cast(correction, tf.float32))
+from matplotlib import cm
+try: from sklearn.manifold import TSNE; HAS_SK = True
+except: HAS_SK = False; print('Please install sklearn for layer visualization')
 
-        # Checkpoint Saver
-        saver = tf.train.Saver()
-        with tf.Session(graph=graph) as session:
 
-            session.run(tf.global_variables_initializer())
+def plot_with_labels(lowDWeights, labels):
+    plt.cla()
+    X, Y = lowDWeights[:, 0], lowDWeights[:, 1]
+    for x, y, s in zip(X, Y, labels):
+        c = cm.rainbow(int(255 * s / 11));
+        plt.text(x, y, s, backgroundcolor=c, fontsize=9)
 
-            def test(t_data, t_label, test_iterations=1, evalate=False):
+    plt.xlim(X.min(), X.max())
+    plt.ylim(Y.min(), Y.max())
+    plt.title('Visualize last layer')
+    plt.show()
+    plt.pause(0.01)
 
-                assert test_data.shape[0] == test_label.shape[0]
 
-                y_predict_class = model['predict_class_number']
+def train(EPOCH=EPOCH):
+    for epoch in range(EPOCH):
+        for x in range(int(TRAIN_SIZE / BATCH_SIZE) + 1):
 
-                # OverallAccuracy, averageAccuracy and accuracyPerClass
-                overAllAcc, avgAcc, averageAccClass = [], [], []
-                for _ in range(test_iterations):
+            batches = training_data[x * BATCH_SIZE: (x + 1) * BATCH_SIZE]
+            labels = training_label[x * BATCH_SIZE: (x + 1) * BATCH_SIZE]
 
-                    pred_class = []
-                    for t in tqdm(t_data):
-                        t = np.expand_dims(t, axis=0)
-                        feed_dict_test = {img_entry: t, prob: 1.0}
-                        prediction = session.run(y_predict_class, feed_dict=feed_dict_test)
-                        pred_class.append(prediction)
+            optimizer.zero_grad()
 
-                    true_class = np.argmax(t_label, axis=1)
-                    conMatrix = confusion_matrix(true_class, pred_class)
+            batches = batches.to(device)
+            labels = labels.to(device)
 
-                    # Calculate recall score across each class
-                    classArray = []
-                    for c in range(len(conMatrix)):
-                        recallScore = conMatrix[c][c] / sum(conMatrix[c])
-                        classArray += [recallScore]
-                    averageAccClass.append(classArray)
-                    avgAcc.append(sum(classArray) / len(classArray))
-                    overAllAcc.append(accuracy_score(true_class, pred_class))
+            outputs = model(batches)
 
-                averageAccClass = np.transpose(averageAccClass)
-                meanPerClass = np.mean(averageAccClass, axis=1)
+            loss = criterion(outputs, torch.max(labels, 1)[1])
 
-                showClassTable(meanPerClass, title='Class accuracy')
-                print('Average Accuracy: ' + str(np.mean(avgAcc)))
-                print('Overall Accuracy: ' + str(np.mean(overAllAcc)))
+            loss.backward()
+            optimizer.step()
 
-            def train(num_iterations, train_batch_size=50):
+        print('Epoch ' + str(epoch + 1) + ' Loss:' + str(loss.item()) )
 
-                maxValidRate = 0
-                for i in range(num_iterations + 1):
+def test(isTraining=False):
 
-                    print('Optimization Iteration: ' + str(i))
+    model.eval()
+    with torch.no_grad():
+        correct = 0
+        total = 0
+        #zip_test = test_data
+        for test_batch, label in zip(test_data[:100], test_label[:100]):
 
-                    for x in range(int(SIZE / train_batch_size) + 1):
-                        train_batch = training_data[x * train_batch_size: (x + 1) * train_batch_size]
-                        train_batch_label = training_label[x * train_batch_size: (x + 1) * train_batch_size]
-                        feed_dict_train = {img_entry: train_batch, img_label: train_batch_label, prob: 0.5}
-                        _, loss_val = session.run([optimizer, cross_entropy], feed_dict=feed_dict_train)
+            test_batch = test_batch.unsqueeze(0)
+            test_batch = test_batch.float()
+            label = label.long()
 
-                    if i % 15 == 0:
-                        acc = session.run(accuracy, feed_dict={img_entry: validation_data,
-                                                               img_label: validation_label,
-                                                               prob: 1.0})
-                        print('Model Performance, Validation accuracy: ', acc * 100)
-                        if maxValidRate < acc:
-                            location = i
-                            maxValidRate = acc
-                            saver.save(session, './Trained_model/' + str(opt.data) +'/the3dnetwork-'+opt.data)
-                        print('Maximum validation accuracy: ', acc, ' at epoch ', location)
-                        test(validation_data, validation_label, 1)
+            test_batch = test_batch.to(device)
+            label = label.to(device)
 
-            def count_param():
-                total_parameters = 0
-                for variable in tf.trainable_variables():
-                    shape = variable.get_shape()
-                    variable_parameters = 1
-                    for dim in shape:
-                        variable_parameters *= dim.value
-                    total_parameters += variable_parameters
-                print('Trainable parameters: ' + '\033[92m' + str(total_parameters) + '\033[0m')
+            output = model(test_batch)
 
-            count_param()
-            # Train model
-            train(num_iterations=EPOCHS, train_batch_size=BATCH)
-            #saver.save(session, model_directory)
+            _, predicted = torch.max(output.data, 1)
 
-            # Test model
-            test(test_data, test_label, test_iterations=1)
-            print('End session ' + str(opt.data))
+            correct += (predicted == label).sum().item()
+
+            total += label.shape[0]
+        print(correct)
+        print(total)
+        print('Test Accuracy of the model: {} %'.format(100 * correct / total))
+
+
+def main():
+    train()
+    test()
+    torch.save(model.state_dict(), './Trained_model/pyTorchModel.ckpt')
+
 
 if __name__ == '__main__':
-    option = parser.parse_args()
-    main(option)
+    main()

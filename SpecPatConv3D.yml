@@ -9,5 +9,6 @@ dependencies:
   - matplotlib
   - tensorflow
   - scikit-learn
-  - wget
   - pandas
+  - tensorflow-probability
+  - pytorch
