@@ -125,11 +125,13 @@ def train(EPOCH=EPOCH):
 
 def test(isTraining=False):
 
+    class_correct = list(0. for i in range(11))
+    class_total = list(0. for i in range(11))
     model.eval()
     with torch.no_grad():
         correct = 0
         total = 0
-        #zip_test = test_data
+
         for test_batch, label in zip(test_data[:100], test_label[:100]):
 
             test_batch = test_batch.unsqueeze(0)
@@ -141,11 +143,12 @@ def test(isTraining=False):
 
             output = model(test_batch)
 
-            _, predicted = torch.max(output.data, 1)
+            _, predicted = torch.max(output, 1)
 
-            correct += (predicted == label).sum().item()
+            c = (predicted == label)
+            print(c)
+            total += label.size(0)
 
-            total += label.shape[0]
         print(correct)
         print(total)
         print('Test Accuracy of the model: {} %'.format(100 * correct / total))
