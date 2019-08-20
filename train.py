@@ -132,7 +132,7 @@ def test(isTraining=False):
         correct = 0
         total = 0
 
-        for test_batch, label in zip(test_data[:100], test_label[:100]):
+        for test_batch, label in zip(test_data[:], test_label[:]):
 
             test_batch = test_batch.unsqueeze(0)
             test_batch = test_batch.float()
@@ -144,10 +144,11 @@ def test(isTraining=False):
             output = model(test_batch)
 
             _, predicted = torch.max(output, 1)
+            label = np.argmax(label, 0)
+            print(predicted, label)
 
-            c = (predicted == label)
-            print(c)
-            total += label.size(0)
+            correct += int(predicted == label)
+            total += 1
 
         print(correct)
         print(total)
