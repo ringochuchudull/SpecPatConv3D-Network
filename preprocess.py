@@ -9,8 +9,8 @@ parser.add_argument('--data', type=str, default='Indian_pines', help='default:In
 parser.add_argument('--patch_size', type=int, default=5, help='Feature size, odd number integer')
 parser.add_argument('--train_ratio', type=float, default=0.1, help='Fraction for training from data')
 parser.add_argument('--validation_ratio', type=float, default=0.1, help='Fraction for validation from data')
-parser.add_argument('--dtype', type=str, default='float16', help='Data type (Eg float64, float32, float16, int64...')
-parser.add_argument('--channel_first', type=bool, default=False, help='Set TRUE to have channel first/ otherwise channel last')
+parser.add_argument('--dtype', type=str, default='float32', help='Data type (Eg float64, float32, float16, int64...')
+parser.add_argument('--channel_first', type=bool, default=True, help='Set TRUE to have channel first/ otherwise channel last')
 parser.add_argument('--plot', type=bool, default=False, help='Set TRUE for visualizing the statlie images and ground truth')
 opt = parser.parse_args()
 

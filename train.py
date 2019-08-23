@@ -1,7 +1,4 @@
-from sklearn.metrics import confusion_matrix, classification_report, accuracy_score
 from argparse import ArgumentParser
-from model import *
-import tensorflow as tf
 import numpy as np
 from helper import showClassTable, maybeExtract
 import os
@@ -60,6 +57,29 @@ BATCH_SIZE = 50
 LR = 0.0005
 
 TRAIN_SIZE = len(training_data)
+class LinearLayer(nn.Module):
+    def __init__(self):
+        super(LinearLayer, self).__init__()
+        self.conv2d_1x1 = nn.Conv2d(200,200,1) #In_channel/ Out Channel/ Filter size
+
+    def forward(self, x):
+        x = self.conv2d_1x1(x)
+        x = F.relu(x)
+        return x
+
+class FullyConnected(nn.Module):
+    def __init__(self):
+        super(FullyConnected, self).__init__()
+        self.fullyconnect1 = nn.Linear(200*5*5, 120)
+        self.fullyconnect2 = nn.Linear(120, 11)
+
+    def forward(self, x):
+        x = x.view(-1, 200*5*5)
+        x = self.fullyconnect1(x)
+        x = F.relu(x)
+        x = self.fullyconnect2(x)
+        x = F.relu(x)
+        return x
 
 class SpecPatConv(nn.Module):
     def __init__(self, CLASS):
@@ -67,12 +87,12 @@ class SpecPatConv(nn.Module):
         self.conv2d_1 = nn.Conv2d(200,200,1) #in_channel/out_channel/fiter_size
         self.fc1 = nn.Linear(200*5*5, 120)
         self.fc2 = nn.Linear(120,11)
+        self.ll = LinearLayer()
+        self.fc = FullyConnected()
 
     def forward(self, x):
-        x = F.relu(self.conv2d_1(x))
-        x = x.view(-1, 200*5*5)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
+        x = self.ll(x)
+        x = self.fc(x)
         return x
 
 model = SpecPatConv(CLASS).to(device)
@@ -145,7 +165,7 @@ def test(isTraining=False):
 
             _, predicted = torch.max(output, 1)
             label = np.argmax(label, 0)
-            print(predicted, label)
+            #print(predicted, label)
 
             correct += int(predicted == label)
             total += 1
